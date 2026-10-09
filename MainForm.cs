@@ -557,7 +557,7 @@ public sealed class MainForm : Form
     {
         var directory = Path.Combine(AppContext.BaseDirectory, "packages");
         if (!Directory.Exists(directory)) return null;
-        return Directory.EnumerateFiles(directory, "com.82flex.trollvnc_*_iphoneos-arm64.deb")
+        return Directory.EnumerateFiles(directory, "trollvnc-*.deb")
             .OrderByDescending(File.GetLastWriteTimeUtc)
             .FirstOrDefault();
     }

@@ -8,7 +8,7 @@ This project uses or interoperates with the following third-party components. Ea
 - Source revision vendored as a Git submodule: `a3e40816ea5b93a7c80c09625175893d15bd1070`
 - License: GNU General Public License version 2
 - License text: `third_party/TrollVNC/COPYING`
-- Bundled binary: `packages/com.82flex.trollvnc_3.2-272_iphoneos-arm64.deb`
+- Bundled binary: `packages/trollvnc-rootless-arm64.deb`
 - SHA-256: `BF30364DBBBD08F55AD934AC02CA72D61B737DEF6FC6646DB498C864A3C6C32A`
 
 The TrollVNC package is installed on the iOS device as a separate program and communicates with iOS Inspector through the VNC protocol and SSH-launched command line.

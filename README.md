@@ -40,7 +40,7 @@ GitHub Release 빌드는 .NET 8 Desktop Runtime을 포함하는 self-contained �
 
 ## 내장 TrollVNC 패키지
 
-- 파일: `packages/com.82flex.trollvnc_3.2-272_iphoneos-arm64.deb`
+- 파일: `packages/trollvnc-rootless-arm64.deb`
 - SHA-256: `BF30364DBBBD08F55AD934AC02CA72D61B737DEF6FC6646DB498C864A3C6C32A`
 - 라이선스: GNU GPL v2
 - 대응 소스: `third_party/TrollVNC` Git submodule
