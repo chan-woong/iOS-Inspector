@@ -1,0 +1,3 @@
+[submodule "third_party/TrollVNC"]
+	path = third_party/TrollVNC
+	url = https://github.com/owngoal-dev/TrollVNC.git
