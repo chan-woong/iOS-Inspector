@@ -65,7 +65,7 @@ public sealed class MainForm : Form
         _sshPort.Text = _settings.SshPort.ToString();
         _sshUsbPort.Text = _settings.UsbLocalPort.ToString();
         _sshUser.Text = _settings.SshUser;
-        Text = "iOS Inspector 1.1";
+        Text = "iOS Inspector 1.1.1";
         MinimumSize = new Size(1120, 720);
         Size = new Size(1320, 880);
         StartPosition = FormStartPosition.CenterScreen;
@@ -525,7 +525,7 @@ public sealed class MainForm : Form
 
     private async Task InstallTrollVncPackageAsync()
     {
-        if (!_sshSession.IsConnected || CurrentDevice is null) { ShowError("먼저 SSH와 USB 단말을 연결하세요."); return; }
+        if (!_sshSession.IsConnected) { ShowError("먼저 SSH 터미널 탭에서 단말에 연결하세요."); return; }
         var packagePath = FindBundledTrollVncPackage();
         if (packagePath is null)
         {
@@ -537,11 +537,7 @@ public sealed class MainForm : Form
         {
             UseWaitCursor = true;
             _status.Text = "내장 TrollVNC 패키지를 단말로 전송 중…";
-            var name = Path.GetFileName(packagePath);
-            _ = await _service.CreateDirectoryAsync(CurrentDevice.Udid, "/Downloads");
-            var upload = await _service.UploadAsync(CurrentDevice.Udid, packagePath, "/Downloads/" + name);
-            if (!upload.Success) { ShowResult("TrollVNC 전송", upload); return; }
-            var remote = "/var/mobile/Media/Downloads/" + name;
+            var remote = await UploadOverSshAsync(packagePath, "TrollVNC 패키지");
             var install = await _sshSession.ExecuteCommandAsync($"dpkg -i {ShellQuote(remote)}");
             if (!install.Success)
                 install = await _sshSession.ExecuteCommandAsync($"DEBIAN_FRONTEND=noninteractive apt-get -f install -y && dpkg -i {ShellQuote(remote)}");
@@ -571,6 +567,7 @@ public sealed class MainForm : Form
             return;
         }
 
+        string? remoteIpaPath = null;
         try
         {
             UseWaitCursor = true;
@@ -590,12 +587,9 @@ public sealed class MainForm : Form
             }
 
             _status.Text = "IPA를 단말로 전송 중…";
-            _ = await _service.CreateDirectoryAsync(CurrentDevice!.Udid, "/Downloads");
             var fileName = Path.GetFileName(_ipaPath.Text);
-            var afcPath = "/Downloads/" + fileName;
-            var devicePath = "/var/mobile/Media/Downloads/" + fileName;
-            var upload = await _service.UploadAsync(CurrentDevice.Udid, _ipaPath.Text, afcPath);
-            if (!upload.Success) { ShowResult("IPA 전송", upload); return; }
+            remoteIpaPath = await UploadOverSshAsync(_ipaPath.Text, "IPA");
+            var devicePath = remoteIpaPath;
 
             _status.Text = "appinst로 설치 중…";
             var install = await _sshSession.ExecuteCommandAsync($"{ShellQuote(installer)} {ShellQuote(devicePath)}");
@@ -632,7 +626,12 @@ public sealed class MainForm : Form
             _ipaSignatureStatus.Text = fakeSignedInstall.Success ? "ldid fake signing 및 설치 완료" : "ldid fake signing 또는 설치 실패";
         }
         catch (Exception ex) { ShowError(ex.Message); }
-        finally { UseWaitCursor = false; }
+        finally
+        {
+            if (remoteIpaPath is not null && _sshSession.IsConnected)
+                try { _ = await _sshSession.ExecuteCommandAsync($"rm -f -- {ShellQuote(remoteIpaPath)}"); } catch { }
+            UseWaitCursor = false;
+        }
     }
 
     private async Task<string> InstallAppInstOnDeviceAsync(Dictionary<string, string> tools)
@@ -655,12 +654,8 @@ public sealed class MainForm : Form
                 "Cat-Ling/appinst",
                 name => name.EndsWith("_iphoneos-arm64.deb", StringComparison.OrdinalIgnoreCase),
                 tempDirectory);
-            _ = await _service.CreateDirectoryAsync(CurrentDevice!.Udid, "/Downloads");
-            var afcPath = "/Downloads/" + Path.GetFileName(localPackage);
-            var devicePath = "/var/mobile/Media/Downloads/" + Path.GetFileName(localPackage);
             _status.Text = "appinst 패키지를 단말로 전송 중…";
-            var upload = await _service.UploadAsync(CurrentDevice.Udid, localPackage, afcPath);
-            if (!upload.Success) { ShowResult("appinst 전송", upload); return ""; }
+            var devicePath = await UploadOverSshAsync(localPackage, "appinst 패키지");
 
             _status.Text = "단말에 appinst 설치 중…";
             var dpkg = tools["DPKG"];
@@ -687,6 +682,29 @@ public sealed class MainForm : Form
         {
             if (localPackage is not null) try { File.Delete(localPackage); } catch { }
         }
+    }
+
+    private async Task<string> UploadOverSshAsync(string localPath, string displayName)
+    {
+        var prepare = await _sshSession.ExecuteCommandAsync("mkdir -p /var/tmp/iosinspector && chmod 700 /var/tmp/iosinspector");
+        if (!prepare.Success)
+            throw new InvalidOperationException("단말에 임시 전송 폴더를 만들 수 없습니다.\n\n" + prepare.Error.Trim());
+
+        var originalName = Path.GetFileName(localPath);
+        var safeName = new string(originalName.Select(character =>
+            char.IsAsciiLetterOrDigit(character) || character is '.' or '-' or '_' ? character : '_').ToArray());
+        if (string.IsNullOrWhiteSpace(safeName)) safeName = "upload.bin";
+        var remotePath = $"/var/tmp/iosinspector/{Guid.NewGuid():N}-{safeName}";
+        var fileSize = Math.Max(1L, new FileInfo(localPath).Length);
+        var progress = new Progress<ulong>(uploaded =>
+        {
+            var percent = Math.Min(100d, uploaded * 100d / fileSize);
+            _status.Text = $"{displayName} SSH 전송 중… {percent:0}%";
+        });
+
+        await _sshSession.UploadFileAsync(localPath, remotePath, progress);
+        _status.Text = $"{displayName} SSH 전송 완료";
+        return remotePath;
     }
 
     private async Task SmartInstallAsync()

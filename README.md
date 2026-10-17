@@ -12,6 +12,7 @@ Windows에서 탈옥 iPhone/iPad를 점검하기 위한 데스크톱 도구입�
 - AFC 기반 파일 탐색, 업로드, 다운로드, 폴더 생성·삭제
 - IPA 서명 상태 확인과 탈옥 단말의 `ldid` fake signing
 - `appinst` 또는 `ipainstaller`를 이용한 IPA 설치
+- IPA, TrollVNC, appinst 패키지를 SSH/SFTP로 전송해 lockdownd 의존성 제거
 - 필요한 Windows용 libimobiledevice 및 zsign 도구 자동 설치
 - TrollVNC rootless 패키지 내장 및 SSH를 통한 단말 설치
 

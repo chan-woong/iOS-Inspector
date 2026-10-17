@@ -52,4 +52,6 @@ Windows와 iPhone 사이의 클립보드 내용 동기화는 제공하지 않습
 4. 설치 도구가 없으면 rootless `appinst` 패키지 자동 설치를 시도합니다.
 5. 재서명이 필요하면 단말의 `ldid`를 이용해 fake signing한 뒤 설치합니다.
 
+IPA와 설치 패키지는 현재 연결된 SSH의 SFTP를 통해 `/var/tmp/iosinspector`로 전송됩니다. 앱 설치 과정은 AFC/lockdownd 연결을 사용하지 않으며, 전송이 끝난 IPA 원본은 단말의 임시 폴더에서 자동 삭제됩니다.
+
 일반 단말용 P12와 provisioning profile 서명은 고급 옵션입니다. 인증서, App ID, entitlements, 등록 UDID가 서로 일치해야 합니다.

@@ -48,6 +48,8 @@ tail -50 /var/tmp/trollvnc.log
 
 ## IPA 설치 실패
 
+- `Could not connect to lockdownd: receive timeout(-7)`이 표시된다면 v1.1.1 이상인지 확인합니다. v1.1.1부터 앱 설치 파일은 AFC가 아니라 SSH/SFTP로 전송됩니다.
+- SFTP 오류가 표시되면 단말에 OpenSSH의 `sftp-server`가 설치되어 있는지와 `/var/tmp`의 여유 공간을 확인합니다.
 - `command -v appinst` 또는 `command -v ipainstaller`를 확인합니다.
 - `command -v ldid`를 확인합니다.
 - 단말 저장 공간과 IPA 아키텍처/iOS 호환성을 확인합니다.

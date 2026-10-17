@@ -1,5 +1,7 @@
 using Renci.SshNet;
+using Renci.SshNet.Common;
 using IosInspector.Models;
+using System.Security.Cryptography;
 
 namespace IosInspector.Services;
 
@@ -7,6 +9,9 @@ public sealed class SshTerminalSession : IDisposable
 {
     private const string WorkingDirectoryMarker = "__IOS_INSPECTOR_PWD__";
     private SshClient? _client;
+    private SftpClient? _sftpClient;
+    private byte[]? _trustedHostFingerprint;
+    private string? _trustedHostKeyName;
     private Action<string>? _onOutput;
     private string _hostName = "iPhone";
     private string _workingDirectory = "~";
@@ -24,7 +29,13 @@ public sealed class SshTerminalSession : IDisposable
         client.HostKeyReceived += (_, args) =>
         {
             var fingerprint = Convert.ToHexString(args.FingerPrint).ToLowerInvariant();
-            args.CanTrust = confirmHostKey($"{args.HostKeyName} {fingerprint}");
+            var trusted = confirmHostKey($"{args.HostKeyName} {fingerprint}");
+            args.CanTrust = trusted;
+            if (trusted)
+            {
+                _trustedHostFingerprint = args.FingerPrint.ToArray();
+                _trustedHostKeyName = args.HostKeyName;
+            }
         };
         client.ErrorOccurred += (_, args) => onOutput($"\r\n[SSH 오류] {args.Exception.Message}\r\n");
         await Task.Run(client.Connect, token);
@@ -79,12 +90,70 @@ public sealed class SshTerminalSession : IDisposable
         finally { _commandLock.Release(); }
     }
 
+    public async Task UploadFileAsync(string localPath, string remotePath, IProgress<ulong>? progress = null,
+        CancellationToken token = default)
+    {
+        if (_client is null || !IsConnected) throw new InvalidOperationException("SSH가 연결되지 않았습니다.");
+        if (!File.Exists(localPath)) throw new FileNotFoundException("전송할 파일을 찾을 수 없습니다.", localPath);
+
+        await _commandLock.WaitAsync(token);
+        try
+        {
+            for (var attempt = 1; attempt <= 2; attempt++)
+            {
+                try
+                {
+                    if (_sftpClient?.IsConnected != true)
+                    {
+                        _sftpClient?.Dispose();
+                        _sftpClient = new SftpClient(_client.ConnectionInfo)
+                        {
+                            OperationTimeout = TimeSpan.FromMinutes(10),
+                            KeepAliveInterval = TimeSpan.FromSeconds(15)
+                        };
+                        _sftpClient.HostKeyReceived += ValidateSftpHostKey;
+                        await Task.Run(_sftpClient.Connect, token);
+                    }
+
+                    await using var input = new FileStream(localPath, FileMode.Open, FileAccess.Read, FileShare.Read,
+                        1024 * 1024, FileOptions.Asynchronous | FileOptions.SequentialScan);
+                    await Task.Run(() => _sftpClient.UploadFile(input, remotePath, true,
+                        uploaded => progress?.Report(uploaded)), token);
+                    return;
+                }
+                catch (Exception ex) when (attempt == 1 && ex is SshConnectionException or SshOperationTimeoutException or IOException)
+                {
+                    _sftpClient?.Dispose();
+                    _sftpClient = null;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException(
+                "SSH SFTP 파일 전송에 실패했습니다. 단말의 OpenSSH와 sftp-server 설치 상태 및 저장 공간을 확인하세요.\n\n" + ex.Message, ex);
+        }
+        finally { _commandLock.Release(); }
+    }
+
     public void Disconnect()
     {
+        if (_sftpClient?.IsConnected == true) _sftpClient.Disconnect();
+        _sftpClient?.Dispose();
+        _sftpClient = null;
         if (_client?.IsConnected == true) _client.Disconnect();
         _client?.Dispose();
         _client = null;
+        _trustedHostFingerprint = null;
+        _trustedHostKeyName = null;
         _onOutput = null;
+    }
+
+    private void ValidateSftpHostKey(object? sender, HostKeyEventArgs args)
+    {
+        args.CanTrust = _trustedHostFingerprint is not null &&
+                        string.Equals(args.HostKeyName, _trustedHostKeyName, StringComparison.Ordinal) &&
+                        CryptographicOperations.FixedTimeEquals(args.FingerPrint, _trustedHostFingerprint);
     }
 
     private string Prompt => $"{_hostName}:{DisplayDirectory} {_user}# ";
